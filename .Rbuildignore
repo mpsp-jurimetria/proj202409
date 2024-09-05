@@ -1,3 +1,4 @@
 ^proj202409\.Rproj$
 ^\.Rproj\.user$
 inst/
+data-raw
