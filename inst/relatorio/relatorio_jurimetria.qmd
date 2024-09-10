@@ -66,123 +66,146 @@ execute:
   message: false
 ---
 
+```{r}
+library(tidyverse)
+conn = DBI::dbConnect(odbc::odbc(),Driver='ODBC Driver 18 for SQL Server',Server='mpdbcaexlab-v',Database='jurimetria',UID='jose',PWD=12345,TrustServerCertificate='yes')
+
+```
+
 
 # Introdução
 
-```{r informacoes-pedido}
-pedido <- params$title
+Esta pesquisa foi solicitada pelas promotoras de justiça Dra. Daniela Moyses da Silveira Favaro, Dra. Francine Pereira Sanches e Dra. Vanessa Therezinha Sousa de Almeida, em nome do Centro de Apoio Operacional Criminal do Ministério Público de São Paulo. O tema abordado foi a falha do estado nas investigações policiais.
 
-solicitacoes <- projetos::get_solicitacoes() |> 
-  dplyr::filter(title == pedido)
 
-promotor <- solicitacoes |> 
-  dplyr::pull(promotor)
-
-dr <- ifelse(genderBR::get_gender(promotor) == "Female", "pela Dra.", "pelo Dr.")
-
-pesquisador <- "{{< meta author >}}"
-
-cao <- solicitacoes |> dplyr::pull(cao_interessado)
-
-tema <- "{{< meta title >}}"
-```
-
-```{r setup, include=FALSE}
-# Format integers
-knit_print.integer = function(x, ...) {
-  prettyNum(x, big.mark=".", decimal.mark=",")
-}
-
-registerS3method(
-  "knit_print", "integer", knit_print.integer,
-  envir = asNamespace("knitr")
-)
-
-# Format dates
-knit_print.Date = function(x, ...) {
-  format(x, "%d/%m/%Y")
-}
-
-registerS3method(
-  "knit_print", "Date", knit_print.Date,
-  envir = asNamespace("knitr")
-)
-
-# Format table
-flextable::set_flextable_defaults(
-  digits = 2,
-  big.mark=".", 
-  decimal.mark=","
-)
-
-```
-
-```{r informacoes-base}
-#base <- saudeMentalSJRP::da_sjrp
-```
-
+O objetivo foi investigar as decisões da Corte Interamericana de Direitos Humanos 
 
 ## Perguntas da pesquisa
 
-```{r}
-quesitos <- solicitacoes |> 
-  dplyr::pull(perguntas) 
-```
-
-A pesquisa objetivou responder aos seguintes pedidos:
-
-`r quesitos`
-
-# Análise de viabilidade
+A pesquisa foi orientada pelas seguintes perguntas, as quais foram submetidas ao GPT-4o Mini via linguagem de programação R.
 
 ```{r}
-viabilidade <- projetos::get_viabilidade() |> 
-  dplyr::filter(title == pedido)
+c(
+  "faça um breve resumo da sentenca da Corte Interamericana de Direitos Humanos que está escrita em espanhol",
+  "Quais foram os principais fundamentos da decisão? separe-os por ponto e vírgula",
+  "Houve investigação de violências perpetradas pelo Estado/por seus funcionários/policiais? Responda apenas sim ou não",
+  "Houve violação do dever de devida diligência? responda apenas sim ou não",
+  "Houve referência à obstrução ou omissão às investigações? Responda apenas sim ou não",
+  "Houve referência ao direito à verdade? responda sim ou não",
+  "Houve referências a falhas na investigação?",
+  "Se houve referências a falhas na investigação, quais as falhas verificadas? separe-as por ponto e vírgula",
+  "Se houve referências a falhas na investigação, quais as recomendações para correção?",
+  "Houve imposição de obrigações ao Estado?, responda apenas sim ou não",
+  "Se Houve imposição de obrigações ao Estado, quais as obrigações? separe-as por ponto e vírgula",
+  "Houve menção ao Ministério Público, fiscalía, prosecutor ou a menção à investigação por órgão independente daquele do responsável pela violação? responda apenas sim ou não",
+  "Houve menção ao Protocolo de Minnesota? responda apenas sim ou não",
+  "O Estado é responsável pela violação ao direito à vida, à integridade e à proteção? responda apenas sim ou não"
+) |> 
+  stringr::str_wrap() |> 
+  paste(1:14, "-", ...=_) |> 
+  cat(sep = ";\n")
 ```
 
-Para realizar esta pesquisa, é necessário... **[especificar os dados e documentos necessários para realizar a pesquisa + especificar que informações serão extraídas e de onde]**
+## Procedimento metodológico
 
-A análise de viabilidade consistirá na análise de quatro elementos: (a) a existência dos dados, (b) a possibilidade de coletá-los, (c) a qualidade dos dados que podem ser coletados e (d) a possibilidade de entregar a análise dentro do prazo esperado.
+Diante da definição do objetivo da pesquisa e da formulação das perguntas a serem respondidas, passou-se à coleta das decisões da Corte Interamericana. No momento da coleta, havia 521 sentenças, conforme mostra a [página da Corte](https://www.corteidh.or.cr/casos_sentencias.cfm). Foram criadas funções em linguagem R para baixar o inteiro teor das decisões. Todas as funções, bem como, as rotinas elaboradas para a análise do conteúdo  estão disponibilizadas no [repositório público deste projeto](https://github.com/mpsp-jurimetria/proj202409).
 
-## Existência dos dados
+Depois de baixadas as decisões judiciais, estas foram submetidas a uma ferramenta de
+processamento de linguagem natural, nomeadamente o GPT4o para responder às perguntas
+acima colocadas. Foi montado um prompt, qual foi usado em laço de repetição para obter
+respostas a cada uma das perguntas. No entanto, 56 dessas sentenças continham mais palavras do que a janela de contexto do GPT é capaz de processar. Elas foram excluídas da análise textual.
 
-`r viabilidade$viabilidade_existe`
 
-## Possibilidade de coleta dos dados
+## Resultados
 
-`r viabilidade$viabilidade_coleta`
 
-## Qualidade dos dados
+### Sentenças por país
 
-`r viabilidade$viabilidade_qualidade`
+O gráfico abaixo mostra a quantidade de sentenças da Corte Interamericana por país. O Brasil ocupa a oitava posição.
 
-## Prazo
+```{r fig.height= 4, fig.width=8}
+DBI::dbGetQuery(conn,"select titulo from proj202409.lista_sentencas") |> 
+                   tidyr::drop_na() |> 
+                   dplyr::mutate(pais  = stringr::str_extract(titulo, "(?i)(?<=vs\\. )[^.]+")) |> 
+      dplyr::count(pais,sort = T) |> 
+      dplyr::mutate(pais = map_chr(pais, ~polyglotr::google_translate(.x, "pt","es"))) |> 
+      ggplot(aes(x = n, y = reorder(pais, n),fill = n))+
+      geom_bar(stat = "identity")+
+      geom_label(aes(label = n), check_overlap = TRUE, size = 3, color = "white")+
+      guides(fill = "none", colour = "none")+
+      theme_minimal()+
+      labs(x = "Número de sentenças", y = "País",
+           title = "Sentenças da Corte Interamericana de Direitos Humanos por país",
+           caption = "Fonte: CorteIdh")
+```
 
-`r viabilidade$viabilidade_prazo`
+### Respostas às perguntas
 
-# Metodologia
+```{r}
+gpt <- DBI::dbGetQuery(conn,"select * from proj202409.gpt")
+```
 
-Todo projeto de jurimetria deve se preocupar com duas questões metodológicas: (1) o não-enviesamento dos dados analisados e (2) a qualidade dos dados. Cada uma dessas questões é endereçada por uma etapa metodológica própria. O viés dos dados é controlado pela etapa de listagem dos processos, enquanto a qualidade dos dados é controlada pela etapa de extração dos dados. 
+#### Resumo geral
 
-## Listagem
+Foram analisadas 465 sentenças. O texto abaixo representa um resumo geral das decisões, realizado pelo GPT:
 
-**[especificar a listagem]**
+> A Corte Interamericana de Direitos Humanos analisou uma série de casos que evidenciam a responsabilidade dos Estados por violações de direitos humanos, frequentemente associadas a falhas nas investigações e à falta de diligência por parte das autoridades. Em muitos casos, as vítimas sofreram detenção arbitrária, tortura, desaparecimento forçado e execuções extrajudiciais, com a Corte destacando a impunidade e a ineficácia das investigações realizadas pelos agentes do Estado. A responsabilidade do Estado foi reconhecida em diversos contextos, incluindo a falta de proteção a defensores de direitos humanos e a violação de direitos de comunidades indígenas. O Ministério Público foi mencionado em alguns casos, onde sua inação ou falhas na condução de investigações foram criticadas. A Corte frequentemente recomendou reparações às vítimas e suas famílias, além de medidas para garantir a não repetição das violações, como a implementação de reformas legislativas e a realização de investigações adequadas. As decisões da Corte enfatizaram a necessidade de garantir o direito à verdade e à justiça, bem como a importância de proteger os direitos humanos em contextos de violência e discriminação.
 
-# Resultados
+#### Fundamentos gerais
 
-**[apresentar resultados]**
+Igualmente, foi solicitado ao GPT extrair os principais fundamentos das decisões, os quais estão listados abaixo:
 
-# Conclusão 
+-  Violação dos direitos humanos, incluindo o direito à vida, integridade pessoal, liberdade e garantias judiciais, conforme estabelecido na Convenção Americana sobre Direitos Humanos.
+-  Responsabilidade do Estado em investigar e sancionar violações de direitos humanos, garantindo reparações adequadas às vítimas e seus familiares.
+-  A necessidade de medidas de proteção para defensores de direitos humanos e a importância do direito à verdade e à justiça.
+-  Incompatibilidade de leis de anistia com a Convenção Americana, que impede a responsabilização de agentes estatais por crimes graves.
+-  A Corte reafirma sua competência para interpretar suas sentenças e a obrigação do Estado de cumprir com as decisões de forma integral.
+-  A falta de devida diligência nas investigações e a obstrução da justiça são fatores que agravam a responsabilidade do Estado.
+-  A importância de garantir o acesso à justiça e a efetividade dos recursos judiciais, especialmente em casos de discriminação e violação de direitos políticos.
+-  A necessidade de reformas legislativas para adequar o direito interno aos padrões internacionais de direitos humanos.
+-  A Corte enfatiza a proteção dos direitos das comunidades indígenas e a necessidade de consulta prévia em projetos que afetam suas terras e modos de vida.
+-  A violação do direito à liberdade de expressão e a importância de proteger a liberdade de imprensa em uma sociedade democrática.
 
-<!-- ::: {.content-visible when-meta="params.quesitos"} -->
+#### Investigação sobre violações perpetradas por agentes do estado.
 
-<!-- # Resposta aos quesitos -->
+A análise abaixo considera os casos em que  os estados realizaram investigação sobre as violência perpetradas.
 
-<!-- ## Quesito n -->
 
-<!-- ## Quesito n -->
+A tabela abaixo mostra a quantidade de decisões em que a resposta para a pergunta sobre se houve investigação das violência perpetradas por agente do estado foi positiva. Em pouco mais da metade, a Corte informa que houve investigação.
 
-<!-- ## Quesito n -->
+```{r}
+gpt |> 
+  count(investigacao, sort = T)
+```
 
-<!-- ::: -->
+
+#### Falhas verificadas
+
+Em todos esses casos houve falha na investigação. Abaixo um resumo das principais falhas verificadas.
+
+> A Corte identificou uma série de falhas significativas nas investigações e processos judiciais, incluindo a falta de autópsias adequadas, a preservação inadequada da cena do crime, a morosidade nos processos judiciais e a falta de responsabilização dos agentes estatais. Além disso, foram observadas dificuldades no acesso à justiça, obstrução das investigações, omissões na responsabilização dos perpetradores e a falta de medidas efetivas para proteger os direitos das vítimas. A inatividade das autoridades, a falta de transparência nas investigações e a ausência de comunicação com as famílias das vítimas também foram destacadas. A Corte ressaltou a necessidade de uma investigação completa e imparcial, bem como a urgência de garantir a segurança das vítimas e a responsabilização dos envolvidos.
+
+
+#### Principais recomendações:
+
+Foi também solicitado ao GPT compilar as principais recomendações dirigidas ao estados pela Corte Interamericana de Direitos Humanos:
+
+-  Realizar investigações efetivas e completas sobre violações de direitos humanos.
+-  Garantir a responsabilização dos responsáveis pelas violações.
+-  Proteger as vítimas e testemunhas durante o processo investigativo.
+-  Implementar medidas de reparação adequadas para as vítimas e seus familiares.
+-  Promover a transparência nas investigações e garantir acesso à informação para as vítimas.
+-  Reformar legislações para assegurar o devido processo e prevenir futuras violações.
+-  Estabelecer mecanismos de proteção para defensores de direitos humanos e denunciantes.
+-  Garantir acesso à justiça para todas as vítimas, incluindo a facilitação de recursos legais.
+-  Capacitar autoridades e funcionários públicos em direitos humanos e protocolos de investigação.
+-  Remover obstáculos legais que impeçam a investigação e a responsabilização dos envolvidos.
+
+
+
+```{r}
+DBI::dbDisconnect(conn)
+```
+
+
 

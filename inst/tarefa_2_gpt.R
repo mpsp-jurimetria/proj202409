@@ -1,21 +1,19 @@
 #!/usr/bin/env Rscript
 
 
-a <- JurisMiner::listar_arquivos(here::here("data-raw/sentencas")) |>
-  basename()
 
-info <- fs::dir_info(here::here("data-raw/gemini")) |>
-  dplyr::filter(size != 0) |>
-  dplyr::mutate(nome_arquivo = basename(path))
+conn = DBI::dbConnect(odbc::odbc(),Driver='ODBC Driver 18 for SQL Server',Server='mpdbcaexlab-v',Database='jurimetria',UID='jose',PWD=12345,TrustServerCertificate='yes')
 
-df <- readRDS(here::here("data/sentencas.rds")) |>
-  dplyr::mutate(nome_arquivo = stringr::str_replace(nome_arquivo, "pdf","json")) |>
-  dplyr::anti_join(info)
+sentencas <- DBI::dbGetQuery(conn,"select * from proj202409.sentencas") |>
+            dplyr::mutate(arquivo = stringr::str_replace(arquivo, "pdf","json"))
 
-instrucoes <- "Considere a sentença a seguir da Corte Interamericana de Direitos Humanos, escrita em espanhol e delimitada por três apóstrofes"
+DBI::dbDisconnect(conn)
+
+diretorio <- here::here("data-raw/gpt")
 
 perguntas <- c(
-  "faça um breve resumo da sentenca",
+  "faça um breve resumo da sentenca da Corte Interamericana de Direitos Humanos que está escrita em espanhol",
+  "Quais foram os principais fundamentos da decisão? separe-os por ponto e vírgula",
   "Houve investigação de violências perpetradas pelo Estado/por seus funcionários/policiais? Responda apenas sim ou não",
   "Houve violação do dever de devida diligência? responda apenas sim ou não",
   "Houve referência à obstrução ou omissão às investigações? Responda apenas sim ou não",
@@ -32,6 +30,7 @@ perguntas <- c(
 
 colunas <- c(
   "resumo",
+  "fundamentos",
   "investigacao",
   "devida_diligencia",
   "omissao",
@@ -47,11 +46,12 @@ colunas <- c(
 )
 
 
-purrr::walk2(df$sentenca[1],df$nome_arquivo[1], purrr::possibly(~{
+purrr::walk2(sentencas$texto,sentencas$arquivo, purrr::possibly(~{
 
-  arquivo <- file.path(here::here("data-raw/gemini2"), .y)
+  arquivo <- file.path(diretorio, .y)
 
-  resposta <- JurisMiner::gemini_extrair(.x, instrucao = instrucoes, perguntas = perguntas, colunas = colunas) |>
-    write(arquivo)
+
+    JurisMiner::azure_openai_extrair(.x, perguntas = perguntas, colunas = colunas ) |>
+      write(arquivo)
 
 },NULL))
